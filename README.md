@@ -8,13 +8,15 @@ A React util that allows you to delay the component's unmounting to your liking.
 
 ## Usage
 
-Create a LifetimeComponent and add children inside. When some children are removed, they will not be unmounted. But rather, the children can control when they are unmounted.
+Create a LifetimeComponent and add children inside. When some children are removed, they will not be unmounted. But rather, the children can control when it's are unmounted.
 
 This supports both components with `key` or a `Map<string, Element>` as children (using a `Map` is recommended).
 
 > (do not use intrinsic elements (`frame`, `textlabel`) or fragments as children)
 
-The information about the lifetime in injected in the `props` of the component. Any hooks for these should get the props from the component first. This info is only injected in the first children of the LifetimeComponent, You can pass the `props` further down the tree manually.
+The information about the lifetime in injected in the `props` of the component. (You dont need to do anything to the props and can be used as usual)
+
+Any hooks should get the props from the component first. This info is only injected in the first children of the LifetimeComponent, You can pass the `props` further down the tree manually.
 
 ## Example
 
@@ -78,10 +80,6 @@ function Window(props: PropsWithChildren) {
 
 ### useComponentIsActive
 
-```ts
-function useComponentIsActive(props: {}): boolean;
-```
-
 Checks if the component is active in the LifetimeController children list (returns true when it's not inside a LifetimeComponent)
 
 ```tsx
@@ -95,16 +93,12 @@ function Window(props: PropsWithChildren) {
 
 ### useIsLifetimeComponent
 
-```ts
-function useIsLifetimeComponent(props: {}): boolean;
-```
-
 Checks if the component was rendered inside of a LifetimeComponent
 
 ```tsx
 function Window(props: PropsWithChildren) {
 	if (useIsLifetimeComponent(props)) {
-		// do something, ideally is ensured that this will not change,
+		// do something, it's ensured that this will not change,
 		// so it's somewhat okay to use conditional hooks here
 	}
 
@@ -114,11 +108,9 @@ function Window(props: PropsWithChildren) {
 
 ### useComponentLifetime
 
-```ts
-function useComponentLifetime(props: {}, initial?: number): (seconds: number) => void;
-```
+Returns a function to set the time in seconds the component will be alive for.
 
-Returns a function to set the time in seconds the component will be alive for. An initial value can be given allowing you to not use the assign function.
+An initial value can be given allowing you to not use the assign function.
 
 ```tsx
 function Window(props: PropsWithChildren) {
@@ -138,10 +130,6 @@ function Window(props: PropsWithChildren) {
 
 ### useDeferLifetime
 
-```ts
-function useDeferLifetime(props: {}, frames = 1): void;
-```
-
 Defers the component unmount until the given number of frames have passed
 
 ```tsx
@@ -158,11 +146,9 @@ function Window(props: PropsWithChildren) {
 
 ### useLifetimeAsync
 
-```ts
-function useLifetimeAsync(props: {}, prom: () => Promise<any>): (prom: () => Promise<any>) => void;
-```
+Returns a function to set an async function that will run when the component is not active. The component will be removed when the async function resolves or fails.
 
-Returns a function to set an async function that will run when the component is not active. The component will be removed when the async function resolves or fails. An initial value can be given allowing you to not use the assign function.
+An initial value can be given allowing you to not use the assign function.
 
 ```tsx
 function Window(props: PropsWithChildren) {
@@ -192,15 +178,17 @@ function Window(props: PropsWithChildren) {
 
 - You cannot use anything that is not a React Component, so adding a `<frame />` or a `<React.Fragment />` might not work. `LifetimeComponent` returns a `React.Fragment` so you can add non-components outside of the LifetimeComponent.
 
-- This touches some react internals, so it's hacky and might break in the future (but it's been tested and works).
+- This touches some react internals, so it's hacky and might break in the future (but it's been tested).
 
 - This uses the props to access the Lifetime Controller, so expect extra keys in the props (it uses `newproxy()` so it's a unique key).
 
 - Not using any of the hooks for control unmounting will cause the component to never be removed (unless the parent component is removed).
 
+- Do not combine unmounting hooks, the will conflict with each other and the behavior is unknown.
+
 - The component is still rendering in the tree when the lifetime is still active, use `useComponentIsActive` to cancel any action that should only happen when the component is active.
 
-_example: _
+_example:_
 
 ```tsx
 function Window(props: PropsWithChildren) {
@@ -218,5 +206,3 @@ function Window(props: PropsWithChildren) {
 	);
 }
 ```
-
-- Do not combine unmounting hooks, the will conflict with each other and the behavior is unknown.
