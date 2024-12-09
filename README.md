@@ -8,15 +8,15 @@ A React util that allows you to delay the component's unmounting to your liking.
 
 ## Usage
 
-Create a LifetimeComponent and add children inside. When some children are removed, they will not be unmounted. But rather, the children can control when it's are unmounted.
+Create a LifetimeComponent and add children inside. When some children are removed, they will not be unmounted. But rather, the children can control when it's unmounted.
 
 This supports both components with `key` or a `Map<string, Element>` as children (using a `Map` is recommended).
 
 > (do not use intrinsic elements (`frame`, `textlabel`) or fragments as children)
 
-The information about the lifetime in injected in the `props` of the component. (You dont need to do anything to the props and can be used as usual)
+The information about the lifetime in injected in the `props` of the component. _(You dont need to do anything to the props and can be used as usual)_
 
-Any hooks should get the props from the component first. This info is only injected in the first children of the LifetimeComponent, You can pass the `props` further down the tree manually.
+Any hooks should get the props from the component first. This info is only injected in the component, You can pass the `props` further down the tree manually, or share them with a React.Context.
 
 ## Example
 
