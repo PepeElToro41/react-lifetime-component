@@ -26,10 +26,18 @@ function CreateChildrenMap(children: ReactNode | undefined, append?: ReactChildr
 	return appened;
 }
 
-function LifetimeComponent(props: PropsWithChildren) {
+interface LifetimeComponentProps extends PropsWithChildren {
+	CanRecover?: boolean;
+}
+
+function LifetimeComponent(props: LifetimeComponentProps) {
 	const [_, setRerender] = React.useState({});
-	const controller = useMemo(() => new LifetimeController(), []);
-	controller.SetUpdater(() => setRerender({}));
+	const controller = useMemo(() => {
+		const controller = new LifetimeController();
+		controller.SetUpdater(() => setRerender({}));
+		return controller;
+	}, []);
+	controller.CanRecover = props.CanRecover ?? false;
 
 	const children = CreateChildrenMap(props.children);
 

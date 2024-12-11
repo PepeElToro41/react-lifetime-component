@@ -1,5 +1,5 @@
 import { useAsyncEffect } from "@rbxts/pretty-react-hooks";
-import React, { useCallback, useEffect, useRef, useState } from "@rbxts/react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "@rbxts/react";
 const HttpService = game.GetService("HttpService");
 const RunService = game.GetService("RunService");
 
@@ -8,7 +8,6 @@ type ReactChildren = Map<string | number, React.Element>;
 interface ComponentState {
 	Key: string | number;
 	Element: React.ReactNode;
-	UnactiveTick: number;
 	UID: string;
 }
 interface ReactElement extends React.Element {
@@ -23,8 +22,9 @@ const LifetimeInternal = newproxy();
 const UIDInternal = newproxy();
 
 export class LifetimeController {
+	CanRecover: boolean = false;
 	AllComponents: Map<string, ComponentState> = new Map();
-	RenderedUIDs: Map<string | number, string> = new Map();
+	CurrentRendered: Map<string | number, string> = new Map(); // map<key, uid>
 	Updater: () => void = () => {};
 
 	SetUpdater(updater: () => void) {
@@ -38,10 +38,10 @@ export class LifetimeController {
 		if (!component) return false;
 		const render = this.GetRendered(component);
 		if (render === undefined) return false;
-		return this.RenderedUIDs.get(render) === uid;
+		return this.CurrentRendered.get(render) === uid;
 	}
 	GetRendered(component: ComponentState) {
-		const renderKey = this.RenderedUIDs.get(component.Key);
+		const renderKey = this.CurrentRendered.get(component.Key);
 		if (renderKey === undefined) return renderKey;
 		if (renderKey !== component.UID) return;
 		return component.Key;
@@ -49,9 +49,9 @@ export class LifetimeController {
 	RemoveRenderedByUID(uid: string) {
 		const component = this.GetComponent(uid);
 		if (!component) return;
-		const rendered = this.RenderedUIDs.get(component.Key);
+		const rendered = this.CurrentRendered.get(component.Key);
 		if (rendered === uid) {
-			this.RenderedUIDs.delete(component.Key);
+			this.CurrentRendered.delete(component.Key);
 		}
 	}
 	UnlistComponent(uid: string) {
@@ -60,16 +60,16 @@ export class LifetimeController {
 		this.AllComponents.delete(uid);
 		this.Updater();
 	}
+
 	RegistryComponent(element: React.Element, key: string | number) {
 		const uid = HttpService.GenerateGUID();
 		const newComponent: ComponentState = {
 			Key: key,
 			Element: element,
-			UnactiveTick: 0,
 			UID: uid,
 		};
 		this.AllComponents.set(uid, newComponent);
-		this.RenderedUIDs.set(key, uid);
+		this.CurrentRendered.set(key, uid);
 	}
 	UpdateComponent(uid: string, element: React.Element) {
 		const component = this.AllComponents.get(uid);
@@ -79,21 +79,38 @@ export class LifetimeController {
 			Element: element,
 		});
 	}
+	GetRenderedComponentByKey(key: string | number) {
+		for (const [_, component] of this.AllComponents) {
+			if (component.Key === key) {
+				return component;
+			}
+		}
+	}
+
 	ProcessChildren(children: ReactChildren) {
 		const newChildren = new Map<string | number, string>();
 
-		this.RenderedUIDs.forEach((uid, key) => {
+		this.CurrentRendered.forEach((uid, key) => {
 			const child = children.get(key);
 			if (!child) return;
 			newChildren.set(key, uid);
 			this.UpdateComponent(uid, child);
 		});
-		this.RenderedUIDs = newChildren;
+
+		this.CurrentRendered = newChildren;
 
 		children.forEach((child, key) => {
-			const uid = this.RenderedUIDs.get(key);
+			const uid = this.CurrentRendered.get(key);
 			if (uid === undefined) {
-				return this.RegistryComponent(child, key);
+				if (this.CanRecover) {
+					const component = this.GetRenderedComponentByKey(key);
+					if (component) {
+						this.UpdateComponent(component.UID, child);
+						this.CurrentRendered.set(key, component.UID);
+						return;
+					}
+				}
+				this.RegistryComponent(child, key);
 			}
 		});
 	}
@@ -115,7 +132,6 @@ export class LifetimeController {
 		});
 		return renderedChildren;
 	}
-	Destroy() {}
 }
 
 /* ---------------------------------- HOOKS --------------------------------- */
@@ -149,8 +165,12 @@ export function useComponentIsActive(props: PropsType) {
  */
 export function useIsLifetimeComponent(props: PropsType) {
 	const data = useIntrinsicData(props);
+	const isComponent = useMemo(() => {
+		// using useMemo to avoid this from ever changing for whatever reason
+		return data !== undefined;
+	}, []);
 
-	return data !== undefined;
+	return isComponent;
 }
 
 /**
@@ -168,10 +188,13 @@ export function useComponentLifetime(props: PropsType, initLifetime?: number) {
 	const isActive = controller.IsComponentActive(uid);
 
 	useEffect(() => {
-		if (!isActive) {
+		if (isActive) {
+			setUnmountTick(undefined);
+		} else {
 			setUnmountTick(os.clock());
 		}
 	}, [isActive]);
+
 	useEffect(() => {
 		if (unmountTick === undefined) return;
 		if (isActive) return;
@@ -187,11 +210,7 @@ export function useComponentLifetime(props: PropsType, initLifetime?: number) {
 		return () => connector.Disconnect();
 	}, [isActive, unmountTick, lifetime]);
 
-	const OnSetLifetime = useCallback((lifetime?: number) => {
-		setLifetime(lifetime);
-	}, []);
-
-	return OnSetLifetime;
+	return setLifetime;
 }
 /**
  * Defers the component unmount until the given number of frames have passed
@@ -207,7 +226,10 @@ export function useDeferLifetime(props: PropsType, frames = 1) {
 		throw 'You cant use useComponentLifetime hook in components that are not children of "LifetimeComponent"';
 
 	useEffect(() => {
-		if (active) return;
+		if (active) {
+			deferred.current = 0;
+			return;
+		}
 
 		const connection = RunService.Heartbeat.Connect(() => {
 			deferred.current += 1;
@@ -248,4 +270,16 @@ export function useLifetimeAsync(props: PropsType, asyncCallback?: () => Promise
 	}, [active, asyncLifetime]);
 
 	return OnSetAsync;
+}
+
+export function SanitizeProps<T extends PropsType>(props: T): T {
+	if (!typeIs(props, "table")) return props;
+
+	const newProps: PropsType = {};
+	for (const [key, value] of pairs(props)) {
+		const unknownKey = key as string;
+		if (unknownKey === LifetimeInternal || unknownKey === UIDInternal) continue;
+		newProps[unknownKey] = value;
+	}
+	return newProps as T;
 }

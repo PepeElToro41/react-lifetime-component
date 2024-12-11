@@ -60,7 +60,7 @@ function Window(props: PropsWithChildren) {
 	useLifetimeAsync(props, () => {
 		return Promise.try(() => {
 			motion.spring(1.5); // move the window outside of the view again
-			task.wait(2); // delay the removal of the component to wait for the spring animation to finish
+			task.wait(1); // delay the removal of the component to wait for the spring animation to finish
 		});
 	});
 
@@ -171,6 +171,55 @@ function Window(props: PropsWithChildren) {
 	}, []);
 
 	return <frame>{children}</frame>;
+}
+```
+
+### LifetimeComponent `CanRecover`
+
+LifetimeComponent has a `CanRecover` prop that determines if a component should be recovered if the a children with the same key is found in the lifetimed components.
+
+Right now, if you add a window, remove it, and add it again with the same key you'd end up with two windows, one of them that has lifetime, and the new one you just added.
+
+If you set `CanRecover` to true, when you add the new window, the old one will be recovered, and become re-active again.
+This implies that `useIsComponentActive` can return true after it returned false, and that the unmounting hooks can be cancelled.
+
+So for the `Window` component example, you may rewrite it like this to support `CanRecover`:
+
+```tsx
+function Window(props: PropsWithChildren) {
+	const isActive = useComponentIsActive(props);
+	const [anchor, motion] = useMotion(-0.5); // start outside of view
+
+	useEffect(() => {
+		if (isActive) {
+			motion.spring(0.5); // move the window to the center of the screen
+		} else {
+			motion.spring(1.5); // move the window outside of the view again
+		}
+	}, [isActive]);
+
+	useComponentLifetime(props, 1); // use the lifetime, rather than an async function
+
+	const position = anchor.map((x) => UDim2.fromScale(x, 0.5));
+
+	return (
+		<frame Position={position} AnchorPoint={new Vector2(0.5, 0.5)} Size={UDim2.fromOffset(200, 200)}>
+			{props.children}
+		</frame>
+	);
+}
+```
+
+### SanitizeProps
+
+`SanitizeProps` is a helper function that removes the injection from the props passed to the component.
+
+You usually dont need to use this unless you use the spread operator, or iterate over the props.
+This returns a new object without mutating the original props.
+
+```tsx
+function Window(props: PropsWithChildren) {
+	return <frame {...SanitizeProps(props)}>{props.children}</frame>;
 }
 ```
 
